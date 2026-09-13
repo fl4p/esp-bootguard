@@ -2,5 +2,5 @@
 # flag must be linked even when the app calls nothing from this component.
 idf_component_register(SRCS "bootguard.c"
                        INCLUDE_DIRS "include"
-                       REQUIRES bootloader_support esp_hw_support freertos
+                       REQUIRES bootloader_support freertos
                        WHOLE_ARCHIVE)

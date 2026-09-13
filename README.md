@@ -7,7 +7,9 @@ consecutive crash resets and, after a limit (default 3), stops the boot loop:
   chip waits in ROM download mode for esptool,
 - **halt**: parks in the bootloader with its watchdog off,
 - **recovery**: boots the app partition of subtype `test`, e.g. a small app that
-  accepts firmware over BLE.
+  accepts firmware over BLE. It falls back to download (or halt) when that
+  partition is missing, holds no valid image, or its app booted at the previous
+  trip and never marked itself healthy.
 
 It replaces ESP-IDF's bootloader `main` component with ESP-IDF's own
 `bootloader_start.c` plus one call between partition selection and image load.
@@ -74,7 +76,7 @@ restarts at zero, so a freshly flashed image gets a full set of tries.
    The build stops with an `#error` if any of them is missing.
 
 3. Add `REQUIRES bootguard` to your main component and mark a boot good once
-   the app has proven itself, from core 0:
+   the app has proven itself:
 
    ```c
    #include "bootguard.h"
@@ -82,8 +84,12 @@ restarts at zero, so a freshly flashed image gets a full set of tries.
    bootguard_mark_healthy();
    ```
 
-   `bootguard_get_status()` returns the count, the number of trips, and the
-   last reset reason and action, for logging.
+   `bootguard_get_status()` returns the count, the number of trips, the last
+   reset reason and action, and whether the guard ran on this boot, for logging.
+
+   **Every app booted by this bootloader must link the component**, including a
+   recovery app. Its startup constructor clears the bootloader's hand-over flag;
+   without it, three plain `esp_restart()` calls trip the guard.
 
 4. Flash the bootloader once (`idf.py flash` writes it at 0x0).
 
@@ -147,15 +153,17 @@ BLE code, so it never advertised again for the tool's own reconnect check.
   rule only counts a hint-less RTC-watchdog reset while the app never started.
   ESP-IDF's interrupt and task watchdogs panic with a hint and are counted.
 - A brownout loop is not counted (the ROM reports it as a power-on).
-- The retained RTC memory is reachable from the PRO CPU only, so
-  `bootguard_mark_healthy()` returns `ESP_ERR_INVALID_STATE` on core 1.
+- A panic handler that stalls before it writes the reset hint (it prints first,
+  with its RTC watchdog armed) ends in a hint-less RTC-watchdog reset, which is
+  not counted.
+- Download mode must be usable: eFuse-disabled download mode defeats the
+  download action, and secure download mode refuses the register write that
+  esptool's `hard_reset` uses to clear the force-download flag.
+- The recovery action refuses to build with
+  `CONFIG_BOOTLOADER_SKIP_VALIDATE_IN_DEEP_SLEEP`: that fast path runs before the
+  guard and would wake a sleeping recovery app into the cached crashing app.
 - Download mode does not help when the USB-Serial-JTAG endpoint itself is dead
   (only a replug revives it). A BLE recovery app would.
-- Once, on the XIAO, the chip left forced download mode about 11 s after a trip,
-  during an interrupt-watchdog run while the test's console reader was
-  reconnecting. It was not reproduced: five console open/close cycles left the
-  chip in download mode, and the full rerun on the second board was clean. The
-  cause is unknown.
 
 ## Test
 
@@ -186,6 +194,9 @@ ran the full test again after the two fixes below: **21 of 21 checks passed**.
 | `abort()` with the halt action | "halted after 3 consecutive crash resets", repeated | stayed halted; esptool's default reset still put it into download mode |
 | esptool `--after watchdog_reset` on a healthy app | ROM reset code 0x01 (power-on) | not counted; the app read a valid record with 0 crashes |
 | console port opened and closed 5 times after a trip | no boot, no bootloader line | still in download mode: esptool connected without a reset, force-download flag still 1 |
+| after a trip, nothing touches the chip for 40 s | silence | still in download mode, flag still 1 (before the watchdog fix below: it booted again 9.7 s after every trip) |
+| recovery action with an erased test partition | `the test partition holds no valid image` | fell back to download mode |
+| recovery action with a crash-looping app in the test partition | first trip boots it, the record reads `(recovery pending)`; at the next trip `the recovery app booted at the previous trip and never marked itself healthy` | fell back to download mode |
 | blank retained memory (erased board), then a deliberately corrupted CRC | "count cleared" on each | the record read back over esptool after the app started: magic 0xb6a1, last reset 0x15 |
 
 Console lines printed right after a reset are sometimes missing from the host
@@ -198,6 +209,15 @@ bootloader's own lines are kept.
 
 ### Found while testing
 
+- **Download mode did not survive unattended.** The bootloader arms the RTC
+  watchdog for its own run (`CONFIG_BOOTLOADER_WDT_TIME_MS`, 9 s). Nothing feeds
+  it in ROM download mode, and its reset clears the RTC domain along with the
+  force-download flag, so the chip booted back into its crash loop 9.7 s after
+  every trip. Every earlier test missed it because esptool attached within a
+  second or two of the trip. The guard now disables that watchdog before it sets
+  the flag, as the halt action already did. This also explains a one-off exit
+  from download mode seen earlier on the XIAO.
+
 - **The record had no integrity check.** ESP-IDF 5.x leaves
   `rtc_retain_mem_t.custom` out of the struct's CRC unless
   `CONFIG_BOOTLOADER_CUSTOM_RESERVE_RTC_IN_CRC` is set. The guard now requires it.
@@ -209,6 +229,11 @@ bootloader's own lines are kept.
   read back as zero with a reboot counter of 1. The guard now lets ESP-IDF
   establish a valid struct right after its reset; ESP-IDF's reboot counter then
   reads 2 on that first boot instead of 1.
+
+## Review
+
+An independent Codex review (xhigh) of the first commit found nine issues; all
+were checked against the code and resolved: [docs/review-fb6a673.md](docs/review-fb6a673.md).
 
 ## License
 

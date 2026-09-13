@@ -29,6 +29,9 @@ extern "C" {
 #endif
 
 #define BOOTGUARD_MAGIC 0xB6A1
+/* high bit of last_action: the recovery app was booted at the latest trip and has not yet marked
+ * itself healthy; a further trip then takes the fallback action instead of recovery */
+#define BOOTGUARD_RECOVERY_PENDING 0x80
 
 typedef enum {
     BOOTGUARD_ACTION_NONE     = 0,
@@ -43,7 +46,7 @@ typedef struct {
     uint8_t  trips;        /* times the guard acted since the retained memory was valid (saturating) */
     uint8_t  last_rom;     /* ROM reset reason of the latest boot (soc_reset_reason_t) */
     uint8_t  last_hint;    /* ESP-IDF reset hint of the latest boot (esp_reset_reason_t), 0 = none */
-    uint8_t  last_action;  /* bootguard_action_t taken at the latest trip */
+    uint8_t  last_action;  /* bootguard_action_t taken at the latest trip, | BOOTGUARD_RECOVERY_PENDING */
     uint8_t  loading;      /* set by the bootloader before it loads an image, cleared by the app
                             * component's startup constructor: a hint-less software or RTC-watchdog
                             * reset while set means the app never started */

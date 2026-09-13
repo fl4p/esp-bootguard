@@ -49,23 +49,26 @@ void app_main(void)
 {
     bootguard_status_t st;
     esp_err_t err = bootguard_get_status(&st);
-    printf("crashloop: esp_reset_reason %d; guard %s: crashes %u trips %u last_rom 0x%02x last_hint %u last_action %s\n",
-           (int)esp_reset_reason(), err == ESP_OK ? "on" : esp_err_to_name(err),
-           st.crashes, st.trips, st.last_rom, st.last_hint, action_name(st.last_action));
+    const unsigned boot_crashes = st.crashes;   /* before any healthy mark: what the bootloader counted */
+    printf("crashloop: esp_reset_reason %d; guard %s: crashes %u trips %u last_rom 0x%02x last_hint %u last_action %s%s\n",
+           (int)esp_reset_reason(), err != ESP_OK ? esp_err_to_name(err) : (st.guarded ? "on" : "stale"),
+           st.crashes, st.trips, st.last_rom, st.last_hint, action_name(st.last_action),
+           st.recovery_pending ? " (recovery pending)" : "");
 
     vTaskDelay(pdMS_TO_TICKS(CONFIG_CRASHLOOP_DELAY_MS));
 
 #if CONFIG_CRASHLOOP_KIND_HEALTHY
     err = bootguard_mark_healthy();
     printf("crashloop: marked healthy (%s)\n", esp_err_to_name(err));
+    (void)boot_crashes;
     for (int n = 0;; n++) {
         vTaskDelay(pdMS_TO_TICKS(5000));
         /* repeat the boot's state: the lines printed right after a reset can be
          * lost on the host while the USB device re-enumerates */
         const bootguard_rec_t *raw = (const bootguard_rec_t *)bootloader_common_get_rtc_retain_mem()->custom;
         err = bootguard_get_status(&st);
-        printf("crashloop: alive %d; esp_reset_reason %d; status %s crashes %u; reboot_counter %u; raw magic 0x%04x crashes %u trips %u last_rom 0x%02x last_hint %u loading %u\n",
-               n, (int)esp_reset_reason(), esp_err_to_name(err), st.crashes,
+        printf("crashloop: alive %d; esp_reset_reason %d; status %s crashes %u; boot_crashes %u; guarded %d; reboot_counter %u; raw magic 0x%04x crashes %u trips %u last_rom 0x%02x last_hint %u loading %u\n",
+               n, (int)esp_reset_reason(), esp_err_to_name(err), st.crashes, boot_crashes, (int)st.guarded,
                bootloader_common_get_rtc_retain_mem_reboot_counter(),
                raw->magic, raw->crashes, raw->trips, raw->last_rom, raw->last_hint, raw->loading);
     }

@@ -4,10 +4,10 @@
  */
 #include "bootguard.h"
 #include "bootloader_common.h"
-#include "esp_cpu.h"
 #include "freertos/FreeRTOS.h"
 
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
+static bool s_guarded_this_boot;
 
 static bootguard_rec_t *rec(void)
 {
@@ -25,7 +25,8 @@ static bool rec_valid(void)
  * bootloader's hand-over worked. Runs on core 0 before the scheduler starts. */
 static void __attribute__((constructor)) bootguard_app_started(void)
 {
-    if (esp_cpu_get_core_id() == 0 && rec_valid() && rec()->loading) {
+    if (rec_valid() && rec()->loading) {
+        s_guarded_this_boot = true;   /* only the guarded bootloader sets the flag, on every hand-over */
         rec()->loading = 0;
         bootloader_common_update_rtc_retain_mem(NULL, false);
     }
@@ -37,33 +38,33 @@ esp_err_t bootguard_get_status(bootguard_status_t *out)
         return ESP_ERR_INVALID_ARG;
     }
     *out = (bootguard_status_t){0};
-    if (esp_cpu_get_core_id() != 0) {
-        return ESP_ERR_INVALID_STATE;
-    }
-    if (!rec_valid()) {
-        return ESP_ERR_NOT_FOUND;
-    }
-    const bootguard_rec_t *r = rec();
-    out->guarded = true;
-    out->crashes = r->crashes;
-    out->trips = r->trips;
-    out->last_rom = r->last_rom;
-    out->last_hint = r->last_hint;
-    out->last_action = r->last_action;
-    return ESP_OK;
-}
-
-esp_err_t bootguard_mark_healthy(void)
-{
-    if (esp_cpu_get_core_id() != 0) {
-        return ESP_ERR_INVALID_STATE;
-    }
     esp_err_t err = ESP_OK;
     portENTER_CRITICAL(&s_lock);
     if (!rec_valid()) {
         err = ESP_ERR_NOT_FOUND;
-    } else if (rec()->crashes != 0) {
+    } else {
+        const bootguard_rec_t *r = rec();
+        out->guarded = s_guarded_this_boot;
+        out->crashes = r->crashes;
+        out->trips = r->trips;
+        out->last_rom = r->last_rom;
+        out->last_hint = r->last_hint;
+        out->last_action = r->last_action & (uint8_t)~BOOTGUARD_RECOVERY_PENDING;
+        out->recovery_pending = (r->last_action & BOOTGUARD_RECOVERY_PENDING) != 0;
+    }
+    portEXIT_CRITICAL(&s_lock);
+    return err;
+}
+
+esp_err_t bootguard_mark_healthy(void)
+{
+    esp_err_t err = ESP_OK;
+    portENTER_CRITICAL(&s_lock);
+    if (!rec_valid()) {
+        err = ESP_ERR_NOT_FOUND;
+    } else if (rec()->crashes != 0 || (rec()->last_action & BOOTGUARD_RECOVERY_PENDING)) {
         rec()->crashes = 0;
+        rec()->last_action &= (uint8_t)~BOOTGUARD_RECOVERY_PENDING;
         bootloader_common_update_rtc_retain_mem(NULL, false);   /* recompute the CRC only */
     }
     portEXIT_CRITICAL(&s_lock);
