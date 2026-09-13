@@ -1,0 +1,56 @@
+menu "Boot guard"
+
+    config BOOTGUARD_ENABLE
+        bool "Count crash resets and act after a limit"
+        default y
+        help
+            The bootloader counts consecutive crash resets (panic, interrupt or
+            task watchdog, CPU lockup, or an app that never started) in ESP-IDF's
+            retained RTC memory. A power-on or a reset from the USB host clears
+            the count, and so does the application's bootguard_mark_healthy().
+            Requires CONFIG_BOOTLOADER_CUSTOM_RESERVE_RTC=y with
+            CONFIG_BOOTLOADER_CUSTOM_RESERVE_RTC_SIZE >= 0x8.
+
+    config BOOTGUARD_MAX_CRASHES
+        int "Consecutive crash resets before acting"
+        range 1 250
+        default 3
+        depends on BOOTGUARD_ENABLE
+
+    choice BOOTGUARD_ACTION
+        prompt "Action at the limit"
+        default BOOTGUARD_ACTION_DOWNLOAD
+        depends on BOOTGUARD_ENABLE
+
+        config BOOTGUARD_ACTION_DOWNLOAD
+            bool "Enter ROM download mode"
+            help
+                Sets the ROM's force-download flag and resets. The chip stays in
+                download mode until esptool resets it with --after hard_reset
+                (which clears the flag) or the power is cycled.
+        config BOOTGUARD_ACTION_HALT
+            bool "Halt in the bootloader"
+            help
+                Parks the chip in the bootloader with the RTC watchdog off, so
+                the reset loop stops. On the S3's USB-Serial-JTAG, esptool can
+                still reset it into download mode from the host.
+        config BOOTGUARD_ACTION_RECOVERY
+            bool "Boot the test app partition (a recovery app)"
+            help
+                Boots the partition of subtype `test`, e.g. a small app that
+                accepts firmware over BLE. Falls back to the choice below when
+                the partition table has no test partition.
+    endchoice
+
+    choice BOOTGUARD_RECOVERY_FALLBACK
+        prompt "Without a test partition"
+        default BOOTGUARD_RECOVERY_FALLBACK_DOWNLOAD
+        depends on BOOTGUARD_ACTION_RECOVERY
+
+        config BOOTGUARD_RECOVERY_FALLBACK_DOWNLOAD
+            bool "Enter ROM download mode"
+        config BOOTGUARD_RECOVERY_FALLBACK_HALT
+            bool "Halt in the bootloader"
+    endchoice
+
+endmenu

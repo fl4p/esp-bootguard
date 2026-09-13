@@ -1,0 +1,11 @@
+CONFIG_IDF_TARGET="esp32s3"
+# the boot guard's record lives in ESP-IDF's retained RTC memory
+CONFIG_BOOTLOADER_CUSTOM_RESERVE_RTC=y
+CONFIG_BOOTLOADER_CUSTOM_RESERVE_RTC_SIZE=0x8
+# without this ESP-IDF's retained-memory CRC stops before the custom area
+CONFIG_BOOTLOADER_CUSTOM_RESERVE_RTC_IN_CRC=y
+# console on the S3's USB-Serial-JTAG block: esptool can reset it into download mode without buttons
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+# crash fast, like a real boot loop
+CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT=y
+CONFIG_ESP_SYSTEM_PANIC_REBOOT_DELAY_SECONDS=0

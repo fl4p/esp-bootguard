@@ -1,0 +1,27 @@
+menu "Crash loop example"
+
+    choice CRASHLOOP_KIND
+        prompt "What the app does after the delay"
+        default CRASHLOOP_KIND_HEALTHY
+        help
+            Build one variant per behaviour to exercise the boot guard.
+
+        config CRASHLOOP_KIND_HEALTHY
+            bool "Mark the boot healthy and keep running"
+        config CRASHLOOP_KIND_ABORT
+            bool "abort() (counted: panic)"
+        config CRASHLOOP_KIND_STACK_OVERFLOW
+            bool "Overflow the main task's stack (counted: panic)"
+        config CRASHLOOP_KIND_INT_WDT
+            bool "Hang with interrupts off (counted: interrupt watchdog)"
+        config CRASHLOOP_KIND_RESTART
+            bool "esp_restart() (NOT counted: deliberate restart)"
+        config CRASHLOOP_KIND_TWO_CRASHES_THEN_HEALTHY
+            bool "abort() until the count reaches 2, then mark healthy and restart once"
+    endchoice
+
+    config CRASHLOOP_DELAY_MS
+        int "Delay before acting (ms)"
+        default 800
+
+endmenu

@@ -1,0 +1,6 @@
+# The boot guard options are defined once, in the app component, so they reach
+# the project's sdkconfig: the bootloader subproject reads that file but only
+# keeps symbols its own Kconfig tree knows. Defining them only here left every
+# option at its default in the bootloader (measured: CONFIG_BOOTGUARD_ACTION_HALT=y
+# in the app's sdkconfig.defaults built a bootloader with ACTION_DOWNLOAD).
+rsource "../../components/bootguard/Kconfig"
