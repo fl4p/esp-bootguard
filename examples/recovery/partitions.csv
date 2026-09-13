@@ -1,0 +1,11 @@
+# Boot guard recovery layout, 4 MB flash.
+# ota_0: the main application (the only OTA slot, so no factory and no ota_1).
+# test:  the BLE OTA recovery app, booted by the guarded bootloader after the crash limit.
+# Running from `test`, esp_ota_get_next_update_partition() returns ota_0; the stock bootloader boots
+# ota_0 (blank otadata: "No factory image, trying OTA 0"; after esp_ota_set_boot_partition: otadata).
+# Name,     Type, SubType, Offset,   Size
+nvs,        data, nvs,     0x9000,   0x6000
+otadata,    data, ota,     0xf000,   0x2000
+phy_init,   data, phy,     0x11000,  0x1000
+ota_0,      app,  ota_0,   0x20000,  0x280000
+test,       app,  test,    0x2a0000, 0x160000

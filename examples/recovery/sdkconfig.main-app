@@ -1,0 +1,6 @@
+# Extra sdkconfig defaults for a MAIN app that goes into ota_0 next to this recovery app.
+# The path is resolved against the main app's project directory; this one suits examples/crashloop.
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="../recovery/partitions.csv"
+CONFIG_BOOTGUARD_ACTION_RECOVERY=y

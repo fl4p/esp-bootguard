@@ -117,9 +117,25 @@ heap, no radio calibration and no BLE controller, from a flash region that ends
 at the partition table (0x8000 by default, about 32 KB). A Bluetooth stack is
 hundreds of kilobytes and needs the full runtime.
 
-The recovery action is the way to get there: put a small BLE OTA app in a
-partition of subtype `test`, and after the limit the bootloader boots it
-instead of the crashing app. That app is not part of this repository.
+The recovery action is the way to get there: a small BLE OTA app in a
+partition of subtype `test`, which the bootloader boots after the limit instead
+of the crashing app. `examples/recovery` is that app: a NimBLE GATT service
+driving the [esp-ota-ble](https://github.com/fl4p/esp-ota-ble) receiver, with a
+partition table (`ota_0` for the main app, `test` for the recovery app) and the
+settings a main app needs to use it. It has no pairing or encryption: anyone in
+range can push firmware while it runs.
+
+Measured on the second board (2026-09-13, `tools/recovery_test.sh`):
+
+| step | console |
+|---|---|
+| main app in `ota_0` aborts three times | `reset 0x0c hint 4: counted, 1 of 3` ... `3 of 3`, then `booting the test partition (recovery)` |
+| recovery app starts | `guard on: crashes 0 trips 1 ... last_action recovery`, `update target ota_0`, `advertising as 'fugu-recovery'` |
+| push a healthy main app from a Mac with fugu-mppt-firmware's `etc/ota_ble.py` | `OTAB READY part=ota_0 size=122101 xform=tamp out=197344`, about 3.5 s later `OTAB OK rebooting` |
+| reboot into the pushed image | `reset 0x0c hint 0: not counted`, `Loaded app from partition at offset 0x20000`, then `marked healthy (ESP_OK)` and `alive` lines for 85 s |
+
+The host tool then reported failure only because the pushed test image has no
+BLE code, so it never advertised again for the tool's own reconnect check.
 
 ## Limitations
 

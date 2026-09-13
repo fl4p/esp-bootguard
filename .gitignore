@@ -8,3 +8,4 @@ dependencies.lock
 *.pyc
 __pycache__/
 test-out/
+.playwright-mcp/

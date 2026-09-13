@@ -1,0 +1,18 @@
+menu "Recovery app"
+
+    config RECOVERY_BLE_NAME
+        string "BLE device name"
+        default "fugu-recovery"
+        help
+            GAP name, sent in the scan response. fugu-mppt-firmware's etc/ota_ble.py picks a
+            device whose name starts with "fugu-" and that advertises the NUS service when it is
+            given no name, so the default is found without -n. Pass -n <name> for any other name.
+
+    config RECOVERY_HEALTHY_AFTER_MS
+        int "Mark the boot healthy after this uptime (ms)"
+        default 10000
+        range 0 600000
+        help
+            Calls bootguard_mark_healthy() once the recovery app has run this long. 0 = never.
+
+endmenu
