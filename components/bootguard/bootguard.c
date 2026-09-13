@@ -5,6 +5,7 @@
 #include "bootguard.h"
 #include "bootloader_common.h"
 #include "freertos/FreeRTOS.h"
+#include "esp_system.h"
 
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
 static bool s_guarded_this_boot;
@@ -25,6 +26,26 @@ static bool rec_valid(void)
  * bootloader's hand-over worked. Runs on core 0 before the scheduler starts. */
 static void __attribute__((constructor)) bootguard_app_started(void)
 {
+    /* Force ESP-IDF's real reset-reason implementation to be linked.
+     *
+     * esp_reset_reason_set_hint() has a WEAK NO-OP definition in
+     * esp_system/panic.c, and the strong one in
+     * esp_system/port/soc/<target>/reset_reason.c is only pulled in when
+     * something in the app references esp_reset_reason(). An app that never
+     * calls it links the stub, so the panic handler's
+     * esp_reset_reason_set_hint(ESP_RST_INT_WDT / TASK_WDT / PANIC) silently
+     * does nothing and every panic reboots with no hint at all.
+     *
+     * The guard's whole crash test is built on that hint, so without this the
+     * guard fails OPEN on the exact case it exists for: measured on an
+     * ESP32-S3 (2026-09-13), 18 consecutive interrupt-watchdog panics all
+     * logged "reset 0x0c hint 0: not counted, 0 of 3" and the board looped
+     * until it was physically replugged. This component must therefore
+     * guarantee its own precondition rather than assume the app does.
+     *
+     * The call itself is cheap and side-effect-free; the reference is the point. */
+    (void)esp_reset_reason();
+
     if (rec_valid() && rec()->loading) {
         s_guarded_this_boot = true;   /* only the guarded bootloader sets the flag, on every hand-over */
         rec()->loading = 0;
